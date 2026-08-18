@@ -4,7 +4,7 @@ import ollama
 
 embedder = SentenceTransformer('all-MiniLM-L6-v2')
 client = chromadb.PersistentClient(path="./chroma_db")
-collection = client.get_or_create_collection(name="my_docs")
+collection = client.get_or_create_collection(name="askra_docs")
 
 def retrieve(question, top_k=8):
     query_embedding = embedder.encode(question).tolist()

@@ -7,7 +7,7 @@ embedder = SentenceTransformer('all-MiniLM-L6-v2')
 
 # 2. Set up a persistent Chroma vector database (saved to disk)
 client = chromadb.PersistentClient(path="./chroma_db")
-collection = client.get_or_create_collection(name="my_docs")
+collection = client.get_or_create_collection(name="askra_docs")
 
 def chunk_text(text, chunk_size=800, overlap=150):
     """Split text into overlapping chunks (in characters)."""
@@ -55,3 +55,5 @@ def index_documents(folder="docs"):
 if __name__ == "__main__":
     index_documents()
     print("Indexing complete.")
+    
+    
