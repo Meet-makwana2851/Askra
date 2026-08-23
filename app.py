@@ -2,7 +2,9 @@ import streamlit as st
 import chromadb
 from sentence_transformers import SentenceTransformer, CrossEncoder
 import ollama
+import os
 
+ollama_client = ollama.Client(host=os.environ.get("OLLAMA_HOST", "http://localhost:11434"))
 st.set_page_config(page_title="Askra", page_icon="📚")
 
 @st.cache_resource
@@ -13,7 +15,8 @@ def load_resources():
     collection = client.get_or_create_collection(name="askra_docs")
     return embedder, reranker, collection
 
-embedder, reranker, collection = load_resources()
+with st.spinner("Loading models (first run can take ~30 seconds)..."):
+    embedder, reranker, collection = load_resources()
 
 def retrieve(question, top_k=20):
     query_embedding = embedder.encode(question).tolist()
@@ -53,17 +56,27 @@ def ask(question, relevance_threshold=0.0):
     filtered_chunks = [c for c, s, score in relevant]
     prompt = build_prompt(question, filtered_chunks)
 
-    response = ollama.chat(model="llama3.2", messages=[{"role": "user", "content": prompt}])
+    response = ollama_client.chat(model="llama3.2", messages=[{"role": "user", "content": prompt}])
     return response["message"]["content"], relevant
 
 # --- UI ---
 st.title("📚 Askra")
 st.caption("Your local, private knowledge assistant — runs entirely on your Mac.")
 
-question = st.text_input("Ask a question about your documents:")
+index_is_empty = collection.count() == 0
+if index_is_empty:
+    st.warning(
+        "No documents are indexed yet. Add `.pdf` or `.txt` files to the `docs/` folder, "
+        "then run `python3 index_docs.py` and refresh this page."
+    )
 
-if question:
-    with st.spinner("Thinking..."):
+question = st.text_input(
+    "Ask a question about your documents:",
+    disabled=index_is_empty,
+)
+
+if question and not index_is_empty:
+    with st.spinner("Searching your docs and asking Llama (~20–30 seconds)..."):
         answer, sources = ask(question)
 
     st.subheader("Answer")

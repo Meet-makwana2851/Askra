@@ -26,6 +26,11 @@ A local, private RAG (Retrieval-Augmented Generation) assistant that answers que
    pip install -r requirements.txt
 ```
 
+> If model downloads fail with a SOCKS proxy error, install the proxy support explicitly:
+> ```bash
+> pip install "httpx[socks]"
+> ```
+
 3. Add your documents (`.pdf` or `.txt`) to the `docs/` folder.
 
 4. Build the vector index:
