@@ -6,6 +6,7 @@ import ollama
 import os
 from pypdf import PdfReader
 import pandas as pd
+import pdfplumber
 
 st.set_page_config(page_title="Askra", page_icon="📚")
 
@@ -91,17 +92,29 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+
+
 DOCS_FOLDER = "docs"
 os.makedirs(DOCS_FOLDER, exist_ok=True)
 
 
 # --- Extraction functions ---
 def extract_pdf_text(filepath):
-    reader = PdfReader(filepath)
-    text = ""
-    for page in reader.pages:
-        text += page.extract_text() + "\n"
-    return text
+    text_parts = []
+    with pdfplumber.open(filepath) as pdf:
+        for page in pdf.pages:
+            tables = page.extract_tables()
+            if tables:
+                for table in tables:
+                    for row in table:
+                        row_text = " | ".join(str(cell) for cell in row if cell)
+                        if row_text.strip():
+                            text_parts.append(row_text)
+            else:
+                page_text = page.extract_text()
+                if page_text:
+                    text_parts.append(page_text)
+    return "\n".join(text_parts)
 
 
 def extract_csv_text(filepath):
