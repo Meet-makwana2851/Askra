@@ -1,6 +1,7 @@
 import os
 import chromadb
 from sentence_transformers import SentenceTransformer
+import pandas as pd
 
 # 1. Load the embedding model (runs locally, downloads once ~80MB)
 embedder = SentenceTransformer('all-MiniLM-L6-v2')
@@ -27,6 +28,17 @@ def extract_pdf_text(filepath):
         text += page.extract_text() + "\n"
     return text
 
+import pandas as pd
+
+def extract_csv_text(filepath):
+    df = pd.read_csv(filepath)
+    rows_as_text = []
+    for _, row in df.iterrows():
+        # Convert each row into a readable "column: value" sentence
+        row_text = ", ".join(f"{col}: {row[col]}" for col in df.columns)
+        rows_as_text.append(row_text)
+    return "\n".join(rows_as_text)
+
 def index_documents(folder="docs"):
     chunk_id = 0
     for filename in os.listdir(folder):
@@ -37,6 +49,8 @@ def index_documents(folder="docs"):
                 text = f.read()
         elif filename.endswith(".pdf"):
             text = extract_pdf_text(filepath)
+        elif filename.endswith(".csv"):
+            text = extract_csv_text(filepath)
         else:
             continue
 
