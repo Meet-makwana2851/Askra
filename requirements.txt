@@ -6,3 +6,6 @@ pypdf
 httpx[socks]
 --extra-index-url https://download.pytorch.org/whl/cpu
 torch
+watchdogrank-bm25==0.2.2
+rank-bm25
+watchdog
