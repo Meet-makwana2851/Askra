@@ -4,13 +4,13 @@ from sentence_transformers import SentenceTransformer, CrossEncoder
 from rank_bm25 import BM25Okapi
 import ollama
 import os
-from pypdf import PdfReader
-import pandas as pd
+import re
 import pdfplumber
+import pandas as pd
 
 st.set_page_config(page_title="Askra", page_icon="📚")
 
-# --- Custom styling ---
+# --- Custom styling (light mode) ---
 st.markdown("""
 <style>
     .main {
@@ -92,8 +92,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-
-
 DOCS_FOLDER = "docs"
 os.makedirs(DOCS_FOLDER, exist_ok=True)
 
@@ -126,13 +124,44 @@ def extract_csv_text(filepath):
     return "\n".join(rows_as_text)
 
 
-def chunk_text(text, chunk_size=800, overlap=150):
+def chunk_text(text, chunk_size=800, overlap=300):
+    """Fallback character-based chunking for long, unstructured text."""
     chunks = []
     start = 0
     while start < len(text):
         end = start + chunk_size
         chunks.append(text[start:end])
         start += chunk_size - overlap
+    return chunks
+
+
+def chunk_by_structure(text, max_chunk_size=1200):
+    """
+    General-purpose structural chunking: splits text at likely section
+    boundaries (short, standalone, capitalized-looking heading lines)
+    instead of blind character cuts. Works for resumes, reports, notes,
+    or any heading-based document. Falls back to character chunking for
+    sections that are still too long, and for documents with no
+    detectable headings at all (e.g. dense tables).
+    """
+    heading_pattern = r'\n(?=[A-Z][A-Za-z &/]{2,40}\n)'
+    rough_sections = re.split(heading_pattern, text)
+
+    chunks = []
+    for section in rough_sections:
+        section = section.strip()
+        if not section:
+            continue
+        if len(section) > max_chunk_size:
+            chunks.extend(chunk_text(section, chunk_size=800, overlap=150))
+        else:
+            chunks.append(section)
+
+    # If structural splitting didn't actually break anything up
+    # (e.g. no headings detected at all), fall back to plain chunking.
+    if len(chunks) <= 1 and len(text) > max_chunk_size:
+        return chunk_text(text)
+
     return chunks
 
 
@@ -147,7 +176,8 @@ def index_single_file(filepath, filename, collection, embedder):
     else:
         return 0
 
-    chunks = chunk_text(text)
+    chunks = chunk_by_structure(text)
+
     for i, chunk in enumerate(chunks):
         embedding = embedder.encode(chunk).tolist()
         collection.add(
@@ -181,7 +211,7 @@ def rebuild_bm25_index(collection):
 
 
 # --- Search + answer functions ---
-def vector_search(question, top_k=15):
+def vector_search(question, top_k=25):
     query_embedding = embedder.encode(question).tolist()
     results = collection.query(query_embeddings=[query_embedding], n_results=top_k)
     chunks = results["documents"][0]
@@ -189,7 +219,7 @@ def vector_search(question, top_k=15):
     return list(zip(chunks, sources))
 
 
-def keyword_search(question, bm25, all_chunks, all_sources, top_k=15):
+def keyword_search(question, bm25, all_chunks, all_sources, top_k=25):
     if bm25 is None:
         return []
     tokenized_query = question.lower().split()
@@ -210,7 +240,7 @@ def hybrid_search(question, bm25, all_chunks, all_sources):
     return merged
 
 
-def rerank(question, candidates, top_n=5):
+def rerank(question, candidates, top_n=8):
     if not candidates:
         return []
     pairs = [[question, chunk] for chunk, source in candidates]
@@ -222,6 +252,9 @@ def rerank(question, candidates, top_n=5):
 def build_prompt(question, chunks):
     context = "\n\n".join(chunks)
     return f"""Answer the question using ONLY the context below.
+The context may contain overlapping or repeated fragments from the same source — read all of it carefully and combine information across fragments rather than relying on just one.
+Context may contain content from different sections of a document (e.g. Projects, Certifications, Experience, Education) — pay close attention to section headers and labels in the text, and only include items that are explicitly under the correct section for the question asked.
+List each relevant item as a bullet point. Do not state a total count in your opening sentence — just present the list.
 If the answer isn't in the context, say "I don't know based on the provided documents."
 
 Context:
@@ -232,10 +265,15 @@ Question: {question}
 Answer:"""
 
 
-def ask(question, bm25, all_chunks, all_sources, relevance_threshold=0.0):
+def ask(question, bm25, all_chunks, all_sources):
     candidates = hybrid_search(question, bm25, all_chunks, all_sources)
-    ranked = rerank(question, candidates)
-    relevant = [(c, s, score) for c, s, score in ranked if score > relevance_threshold]
+    ranked = rerank(question, candidates, top_n=8)
+
+    with st.expander("🔍 Debug: retrieved candidates"):
+        for chunk, source, score in ranked:
+            st.text(f"[{score:.3f}] [{source}] {chunk[:80]}")
+
+    relevant = ranked  # trust top_n from reranking rather than a fixed score cutoff
 
     if not relevant:
         return "I don't know based on the provided documents.", []
@@ -282,7 +320,25 @@ with st.sidebar:
     if existing_files:
         st.caption(f"📂 {len(existing_files)} document(s) indexed")
         for f in existing_files:
-            st.markdown(f'<div class="file-badge">📄 {f}</div>', unsafe_allow_html=True)
+            col1, col2 = st.columns([4, 1])
+            with col1:
+                st.markdown(f'<div class="file-badge">📄 {f}</div>', unsafe_allow_html=True)
+            with col2:
+                if st.button("🗑️", key=f"delete_{f}", help=f"Delete {f}"):
+                    all_data = collection.get()
+                    ids_to_delete = [
+                        id_ for id_, meta in zip(all_data["ids"], all_data["metadatas"])
+                        if meta["source"] == f
+                    ]
+                    if ids_to_delete:
+                        collection.delete(ids=ids_to_delete)
+
+                    filepath = os.path.join(DOCS_FOLDER, f)
+                    if os.path.exists(filepath):
+                        os.remove(filepath)
+
+                    st.success(f"Deleted {f}")
+                    st.rerun()
     else:
         st.caption("No documents yet — upload one above")
 
