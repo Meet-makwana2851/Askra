@@ -8,86 +8,126 @@ import re
 import pdfplumber
 import pandas as pd
 
-st.set_page_config(page_title="Askra", page_icon="📚")
+st.set_page_config(page_title="Askra", page_icon="✦", layout="centered")
 
-# --- Custom styling (light mode) ---
+# --- Custom styling: ChatGPT-like, subtle, professional ---
 st.markdown("""
 <style>
     .main {
         background-color: #ffffff;
     }
+    #MainMenu, footer, header {visibility: hidden;}
+
     .askra-header {
         text-align: center;
-        padding: 1.5rem 0 0.5rem 0;
+        padding: 2rem 0 1rem 0;
+    }
+    .askra-logo {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 44px;
+        height: 44px;
+        border-radius: 12px;
+        background: linear-gradient(135deg, #4f46e5, #7c3aed);
+        color: white;
+        font-size: 1.4rem;
+        margin-bottom: 0.6rem;
     }
     .askra-header h1 {
-        font-size: 2.8rem;
-        margin-bottom: 0;
-        background: linear-gradient(90deg, #7c3aed, #a855f7);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
+        font-size: 1.7rem;
+        font-weight: 600;
+        margin: 0.4rem 0 0.2rem 0;
+        color: #111827;
     }
     .askra-header p {
-        color: #6b7280;
-        font-size: 1rem;
+        color: #9ca3af;
+        font-size: 0.9rem;
+        margin: 0;
     }
+
     .stTextInput input {
-        border-radius: 12px;
-        border: 1px solid #d1d5db;
-        padding: 0.8rem 1rem;
-        font-size: 1rem;
-        background-color: #ffffff;
+        border-radius: 24px;
+        border: 1px solid #e5e7eb;
+        padding: 0.9rem 1.2rem;
+        font-size: 0.95rem;
+        background-color: #f7f7f8;
+        color: #111827;
+        box-shadow: none;
+    }
+    .stTextInput input:focus {
+        border-color: #a5a6f6;
+        box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.08);
+    }
+
+    /* Chat-style message bubbles */
+    .chat-bubble-user {
+        background-color: #f3f4f6;
+        color: #111827;
+        border-radius: 16px 16px 4px 16px;
+        padding: 0.9rem 1.2rem;
+        margin: 1.2rem 0 0.6rem auto;
+        max-width: 80%;
+        font-size: 0.95rem;
+        text-align: right;
+    }
+    .chat-bubble-assistant {
+        background-color: #faf9fb;
+        border: 1px solid #eeecf3;
+        border-radius: 16px 16px 16px 4px;
+        padding: 1.1rem 1.3rem;
+        margin: 0 auto 0.6rem 0;
+        max-width: 85%;
+        font-size: 0.97rem;
+        line-height: 1.65;
         color: #1f2937;
     }
-    .answer-card {
-        background-color: #f9f7ff;
-        border: 1px solid #e5deff;
-        border-radius: 14px;
-        padding: 1.5rem;
-        margin-top: 1rem;
-        box-shadow: 0 2px 6px rgba(124, 58, 237, 0.08);
-    }
-    .answer-card h4 {
-        color: #7c3aed;
-        margin-top: 0;
-        font-size: 0.9rem;
+    .assistant-label {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        font-size: 0.75rem;
+        color: #9ca3af;
         text-transform: uppercase;
         letter-spacing: 0.05em;
+        margin-bottom: 0.5rem;
+        font-weight: 600;
     }
-    .answer-card p {
-        color: #1f2937;
-    }
+
     .stExpander {
         border-radius: 10px;
-        border: 1px solid #e5e7eb !important;
-        background-color: #ffffff;
+        border: 1px solid #f0eef5 !important;
+        background-color: #fdfcfe;
     }
+
     section[data-testid="stSidebar"] {
-        background-color: #faf9fc;
-        border-right: 1px solid #e5e7eb;
+        background-color: #fbfafc;
+        border-right: 1px solid #f0eef5;
     }
     section[data-testid="stSidebar"] h2 {
-        color: #7c3aed;
-        font-size: 1.1rem;
+        color: #4f46e5;
+        font-size: 1rem;
+        font-weight: 600;
     }
     .file-badge {
-        background-color: #f5f3ff;
-        border: 1px solid #e5deff;
+        background-color: #f6f5fb;
+        border: 1px solid #eeecf7;
         border-radius: 8px;
-        padding: 0.4rem 0.8rem;
+        padding: 0.45rem 0.8rem;
         margin: 0.3rem 0;
-        font-size: 0.85rem;
+        font-size: 0.83rem;
         color: #4b5563;
     }
     .stButton button {
         border-radius: 10px;
-        background: linear-gradient(90deg, #7c3aed, #a855f7);
+        background: linear-gradient(135deg, #4f46e5, #7c3aed);
         color: white;
         border: none;
         font-weight: 600;
+        font-size: 0.85rem;
     }
     .stButton button:hover {
-        opacity: 0.9;
+        opacity: 0.92;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -125,7 +165,6 @@ def extract_csv_text(filepath):
 
 
 def chunk_text(text, chunk_size=800, overlap=300):
-    """Fallback character-based chunking for long, unstructured text."""
     chunks = []
     start = 0
     while start < len(text):
@@ -136,14 +175,6 @@ def chunk_text(text, chunk_size=800, overlap=300):
 
 
 def chunk_by_structure(text, max_chunk_size=1200):
-    """
-    General-purpose structural chunking: splits text at likely section
-    boundaries (short, standalone, capitalized-looking heading lines)
-    instead of blind character cuts. Works for resumes, reports, notes,
-    or any heading-based document. Falls back to character chunking for
-    sections that are still too long, and for documents with no
-    detectable headings at all (e.g. dense tables).
-    """
     heading_pattern = r'\n(?=[A-Z][A-Za-z &/]{2,40}\n)'
     rough_sections = re.split(heading_pattern, text)
 
@@ -153,12 +184,10 @@ def chunk_by_structure(text, max_chunk_size=1200):
         if not section:
             continue
         if len(section) > max_chunk_size:
-            chunks.extend(chunk_text(section, chunk_size=800, overlap=150))
+            chunks.extend(chunk_text(section, chunk_size=800, overlap=300))
         else:
             chunks.append(section)
 
-    # If structural splitting didn't actually break anything up
-    # (e.g. no headings detected at all), fall back to plain chunking.
     if len(chunks) <= 1 and len(text) > max_chunk_size:
         return chunk_text(text)
 
@@ -273,7 +302,7 @@ def ask(question, bm25, all_chunks, all_sources):
         for chunk, source, score in ranked:
             st.text(f"[{score:.3f}] [{source}] {chunk[:80]}")
 
-    relevant = ranked  # trust top_n from reranking rather than a fixed score cutoff
+    relevant = ranked
 
     if not relevant:
         return "I don't know based on the provided documents.", []
@@ -287,17 +316,19 @@ def ask(question, bm25, all_chunks, all_sources):
 # --- UI ---
 st.markdown("""
 <div class="askra-header">
-    <h1>📚 Askra</h1>
-    <p>Your local, private knowledge assistant — runs entirely on your Mac</p>
+    <div class="askra-logo">✦</div>
+    <h1>Askra</h1>
+    <p>Ask questions about your own documents — answered locally and privately</p>
 </div>
 """, unsafe_allow_html=True)
 
 with st.sidebar:
-    st.header("📁 Upload Documents")
+    st.header("Documents")
     uploaded_files = st.file_uploader(
-        "Upload PDF, TXT, or CSV files",
+        "Upload PDF, TXT, or CSV",
         type=["pdf", "txt", "csv"],
-        accept_multiple_files=True
+        accept_multiple_files=True,
+        label_visibility="collapsed"
     )
 
     if uploaded_files:
@@ -318,11 +349,11 @@ with st.sidebar:
     st.divider()
     existing_files = [f for f in os.listdir(DOCS_FOLDER) if not f.startswith(".")]
     if existing_files:
-        st.caption(f"📂 {len(existing_files)} document(s) indexed")
+        st.caption(f"{len(existing_files)} document(s)")
         for f in existing_files:
             col1, col2 = st.columns([4, 1])
             with col1:
-                st.markdown(f'<div class="file-badge">📄 {f}</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="file-badge">{f}</div>', unsafe_allow_html=True)
             with col2:
                 if st.button("🗑️", key=f"delete_{f}", help=f"Delete {f}"):
                     all_data = collection.get()
@@ -340,28 +371,34 @@ with st.sidebar:
                     st.success(f"Deleted {f}")
                     st.rerun()
     else:
-        st.caption("No documents yet — upload one above")
+        st.caption("No documents yet")
 
 bm25, all_chunks, all_sources = rebuild_bm25_index(collection)
 
-question = st.text_input("Ask a question about your documents:")
+question = st.text_input(
+    "Ask a question",
+    placeholder="Ask a question about your documents...",
+    label_visibility="collapsed"
+)
 
 if question:
+    st.markdown(f'<div class="chat-bubble-user">{question}</div>', unsafe_allow_html=True)
+
     with st.spinner("Thinking..."):
         answer, sources = ask(question, bm25, all_chunks, all_sources)
 
     st.markdown(f"""
-    <div class="answer-card">
-        <h4>Answer</h4>
-        <p style="font-size: 1.05rem; line-height: 1.6;">{answer}</p>
+    <div class="chat-bubble-assistant">
+        <div class="assistant-label">✦ Askra</div>
+        {answer}
     </div>
     """, unsafe_allow_html=True)
 
     if sources:
         st.markdown("<br>", unsafe_allow_html=True)
-        st.subheader("📎 Sources")
+        st.caption("Sources")
         for i, (chunk, src, score) in enumerate(sources):
-            with st.expander(f"📄 {src} · relevance {score:.2f}"):
+            with st.expander(f"{src} · relevance {score:.2f}"):
                 st.write(chunk)
     else:
         st.caption("No sufficiently relevant chunks found in your documents.")
